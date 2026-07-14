@@ -10,17 +10,19 @@ from sklearn.model_selection import LeaveOneOut
 from statsmodels.stats.outliers_influence import variance_inflation_factor, OLSInfluence
 import io
 import xlsxwriter
+from xlsxwriter.utility import xl_col_to_name
 
 # Set page configuration
 st.set_page_config(page_title="Catalysis Data Analytics Dashboard", layout="wide")
 st.title("🔬 Catalysis Materials Informatics Platform")
 st.markdown("Welcome, Examiners. Please select an analytical pipeline below, upload your dataset, and view the live statistical models, figures, and spreadsheet exports.")
 
-# Create three distinct pipeline views using tabs
-tab1, tab2, tab3 = st.tabs([
+# Create four distinct pipeline views using tabs
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Appendix B: Bilinear Training & LOOCV", 
     "🔀 Appendix C: Grouped Pearson Correlation", 
-    "🌐 Appendix D: Ungrouped Pearson Correlation"
+    "🌐 Appendix D: Ungrouped Pearson Correlation",
+    "🌋 Appendix E: HER Volcano Plot (Nørskov Model)"
 ])
 
 # ==========================================
@@ -47,7 +49,6 @@ with tab1:
 
         st.success(f"Preprocessing Complete: Initial Rows ({initial_count}) ➔ Active Rows ({final_count}). Dropped: {initial_count - final_count}")
 
-        # Regression pipeline function
         def run_group_regression(sub_df):
             X = sub_df[features]
             y = sub_df[target]
@@ -64,7 +65,6 @@ with tab1:
                 m = LinearRegression().fit(X.iloc[train_idx], y.iloc[train_idx])
                 y_loo[test_idx] = m.predict(X.iloc[test_idx])
                 
-            influence = OLSInfluence(model)
             return {
                 'model': model, 'vif': vif_data, 'y_pred': y_pred, 'y_loo': y_loo, 
                 'y_actual': y, 'dopants': sub_df['Dopant'].reset_index(drop=True),
@@ -77,7 +77,6 @@ with tab1:
         res_a = run_group_regression(df_a)
         res_b = run_group_regression(df_b)
 
-        # Output Reports
         st.markdown("### Detailed Regression & Statistical Metrics Report")
         col1, col2 = st.columns(2)
         
@@ -105,13 +104,11 @@ with tab1:
         st.info(f"**Global Training Fit:** R² = {r2_score(y_all_act, y_all_pre):.3f} | MAE = {mean_absolute_error(y_all_act, y_all_pre):.3f} eV")
         st.info(f"**Global Validation LOOCV:** R² = {r2_score(y_all_act, y_all_loo):.3f} | MAE = {mean_absolute_error(y_all_act, y_all_loo):.3f} eV")
 
-        # Master Diagnostic Plot
         fig, axs = plt.subplots(2, 2, figsize=(16, 12))
         def label_pts(ax, x, y, labels):
             for idx, name in enumerate(labels):
                 ax.annotate(name, (x.iloc[idx], y[idx] if isinstance(y, np.ndarray) else y.iloc[idx]), xytext=(4, 4), textcoords='offset points', fontsize=8, alpha=0.7)
 
-        # Panel 1
         axs[0, 0].scatter(res_a['y_actual'], res_a['y_pred'], c='#3498db', s=75, edgecolors='k', label='Group A')
         axs[0, 0].scatter(res_b['y_actual'], res_b['y_pred'], c='#e67e22', s=75, edgecolors='k', label='Group B')
         label_pts(axs[0, 0], res_a['y_actual'], res_a['y_pred'], res_a['dopants'])
@@ -119,7 +116,6 @@ with tab1:
         axs[0, 0].plot([y_all_act.min(), y_all_act.max()], [y_all_act.min(), y_all_act.max()], 'r--', lw=2)
         axs[0, 0].set_title('1: Training Parity', fontweight='bold')
         
-        # Panel 2
         axs[0, 1].scatter(res_a['y_actual'], res_a['y_loo'], c='#3498db', marker='s', s=65, edgecolors='k', label='Group A (LOOCV)')
         axs[0, 1].scatter(res_b['y_actual'], res_b['y_loo'], c='#e67e22', marker='s', s=65, edgecolors='k', label='Group B (LOOCV)')
         label_pts(axs[0, 1], res_a['y_actual'], res_a['y_loo'], res_a['dopants'])
@@ -127,7 +123,6 @@ with tab1:
         axs[0, 1].plot([y_all_act.min(), y_all_act.max()], [y_all_act.min(), y_all_act.max()], 'k--', lw=1.5)
         axs[0, 1].set_title('2: LOOCV Validation Plot', fontweight='bold')
 
-        # Panel 3 & 4 (Residuals)
         axs[1, 0].scatter(res_a['model'].fittedvalues, res_a['model'].resid, c='#3498db', s=65, edgecolors='k')
         label_pts(axs[1, 0], res_a['model'].fittedvalues, res_a['model'].resid, res_a['dopants'])
         axs[1, 0].axhline(0, color='red', linestyle='--')
@@ -141,7 +136,6 @@ with tab1:
         plt.tight_layout()
         st.pyplot(fig)
 
-        # Live Excel Builder Buffer
         output_b = io.BytesIO()
         wb = xlsxwriter.Workbook(output_b, {'nan_inf_to_errors': True})
         fmt_h = wb.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center'})
@@ -152,15 +146,6 @@ with tab1:
         ws_sum.write(0, 0, 'Statistical Parameters Summary', fmt_h)
         ws_sum.write_row(2, 0, ['Group', 'Term', 'Coefficient', 'P-Value', 'VIF'], fmt_h)
         
-        def write_summary_block(ws, start_row, g_name, r_obj):
-            ws.write(start_row, 0, g_name, fmt_d)
-            for idx, t in enumerate(['const', 'ed', 'Mag']):
-                r = start_row + idx
-                ws.write(r, 1, t, fmt_d)
-                ws.write(r, 2, r_obj['model'].params[t], fmt_d)
-                ws.write(r, 3, r_obj['model'].pvalues[t], fmt_d)
-                ws.write(r, 4, r_obj['vif'][idx] if t != 'const' else 'N/A', fmt_d)
-
         write_summary_block(ws_sum, 3, 'Group A', res_a)
         write_summary_block(ws_sum, 7, 'Group B', res_b)
 
@@ -245,7 +230,6 @@ with tab3:
         sns.heatmap(corr_matrix, annot=True, cmap='RdBu_r', center=0, fmt='.2f', linewidths=0.5, annot_kws={"size": 12, "weight": "bold"}, ax=ax_d)
         st.pyplot(fig_d)
 
-        # Excel generation with absolute live correlation parsing formulas
         output_d = io.BytesIO()
         num_features = len(corr_matrix)
         
@@ -266,3 +250,91 @@ with tab3:
                 worksheet.write_formula(row_num, num_features + 1, cell_formula, formula_format)
 
         st.download_button(label="📥 Download Ungrouped Live-Formula Workbook", data=output_d.getvalue(), file_name="Correlation_Analysis_Ungrouped.xlsx", mime="application/vnd.ms-excel")
+
+# ==========================================
+# PIPELINE 4: NEW APPENDIX E (HER VOLCANO PLOT)
+# ==========================================
+with tab4:
+    st.header("HER Volcano Plot (Nørskov 2005 Model)")
+    file_e = st.file_uploader("Upload Dataset for Appendix E (CSV Format, must contain 'DFT_E' and 'Dopant')", type=["csv"], key="file_e")
+    
+    if file_e is not None:
+        df_e = pd.read_csv(file_e)
+        
+        # Verify columns exist
+        if 'DFT_E' in df_e.columns and 'Dopant' in df_e.columns:
+            # Constants & Parameters
+            kB = 8.61733326e-5   # Boltzmann constant in eV/K
+            T = 298.15           # Temperature in K
+            k0 = 200.0           # Pre-exponential factor
+            kBT = kB * T
+            ln10 = np.log(10)
+
+            def norskov_eq12_and_14(dG):
+                exp_term = np.exp(-dG / kBT)
+                log_i0 = np.log10(k0) - np.log10(1 + exp_term)
+                if dG > 0:
+                    log_i0 -= (dG / (kBT * ln10))
+                return log_i0
+
+            # Compute log_i0 data column
+            df_e['log_i0'] = df_e['DFT_E'].apply(norskov_eq12_and_14)
+
+            # Render Matplotlib Figure
+            fig_e, ax_e = plt.subplots(figsize=(11, 7))
+            
+            # Theoretical Curve
+            dG_range = np.linspace(-1.2, 1.2, 500)
+            log_i0_theory = [norskov_eq12_and_14(x) for x in dG_range]
+            ax_e.plot(dG_range, log_i0_theory, 'k--', lw=2.2, alpha=0.8, label='Theoretical Volcano (Eqs. 12 & 14)')
+
+            # Scatter Points
+            ax_e.scatter(df_e['DFT_E'], df_e['log_i0'], color='royalblue', edgecolors='black', s=90, zorder=5, label='Calculated Sites')
+
+            # Dopant Annotations
+            for idx, row in df_e.iterrows():
+                ax_e.text(row['DFT_E'] + 0.02, row['log_i0'] + 0.02, str(row['Dopant']), fontsize=9)
+
+            ax_e.axvline(0, color='red', linestyle='--', alpha=0.7, lw=1.5, label=r'Optimal $\Delta G_{H^*} \approx 0$ eV')
+            ax_e.set_xlabel(r'$\Delta G_{H^*}$ (eV)', fontsize=14)
+            ax_e.set_ylabel(r'$\log_{10} |j_0|$ (a.u.)', fontsize=14)
+            ax_e.set_title('HER Volcano Plot', fontsize=15)
+            ax_e.legend(fontsize=12)
+            ax_e.grid(True, alpha=0.3)
+            plt.tight_layout()
+            
+            st.pyplot(fig_e)
+
+            # Generate Excel with Live Formulas
+            output_e = io.BytesIO()
+            writer_e = pd.ExcelWriter(output_e, engine='xlsxwriter')
+            df_e.to_excel(writer_e, index=False, sheet_name='HER_Analysis')
+
+            workbook_e = writer_e.book
+            worksheet_e = writer_e.sheets['HER_Analysis']
+
+            # Helper configuration metadata cell mapping
+            worksheet_e.write('Z1', 'kBT (eV)')
+            worksheet_e.write('AA1', kBT)
+            worksheet_e.write('Z2', 'k0 (const)')
+            worksheet_e.write('AA2', k0)
+            worksheet_e.write('Z3', 'ln(10)')
+            worksheet_e.write('AA3', ln10)
+
+            dG_col = xl_col_to_name(df_e.columns.get_loc('DFT_E'))
+            log_col = xl_col_to_name(df_e.columns.get_loc('log_i0'))
+
+            for i in range(2, len(df_e) + 2):
+                formula = (
+                    f'=IF({dG_col}{i}<=0, '
+                    f'LOG10($AA$2) - LOG10(1 + EXP(-{dG_col}{i}/$AA$1)), '
+                    f'LOG10($AA$2) - LOG10(1 + EXP(-{dG_col}{i}/$AA$1)) - ({dG_col}{i}/($AA$1*$AA$3))'
+                    ')'
+                )
+                worksheet_e.write_formula(f'{log_col}{i}', formula)
+
+            writer_e.close()
+            
+            st.download_button(label="📥 Download Nørskov Volcano Spreadsheet Data", data=output_e.getvalue(), file_name="Norskov_volcano_data.xlsx", mime="application/vnd.ms-excel")
+        else:
+            st.error("Uploaded CSV missing required matching columns: 'DFT_E' and 'Dopant'.")
