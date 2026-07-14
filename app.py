@@ -158,6 +158,7 @@ with tab1:
         write_summary_block(ws_sum, 3, 'Group A', res_a)
         write_summary_block(ws_sum, 7, 'Group B', res_b)
 
+        # SHEET 1: Training Parity Data
         ws1 = wb.add_worksheet('Panel 1 - Training Parity')
         ws1.write_row(0, 0, ['Dopant Element', 'Group Designation', 'Descriptor ed', 'Descriptor Mag', 'DFT Calculated E_ads', 'Model Predicted E_ads', 'Absolute Error'], fmt_h)
         
@@ -173,6 +174,32 @@ with tab1:
                 ws1.write_formula(row_idx, 5, f"='Analysis Summary'!$C$8 + ('Analysis Summary'!$C$9 * C{row_idx+1}) + ('Analysis Summary'!$C$10 * D{row_idx+1})", fmt_f)
             ws1.write_formula(row_idx, 6, f"=ABS(F{row_idx+1}-E{row_idx+1})", fmt_f)
 
+        # SHEET 2: LOOCV Parity Data
+        ws2 = wb.add_worksheet('Panel 2 - LOOCV Parity')
+        ws2.write_row(0, 0, ['Dopant Element', 'Group Designation', 'DFT Calculated E_ads', 'LOOCV Predicted E_ads', 'LOOCV Absolute Error'], fmt_h)
+        for i in range(final_count):
+            row_idx = i + 1
+            if i < len_a:
+                ws2.write_row(row_idx, 0, [res_a['dopants'][i], 'A', res_a['y_actual'].iloc[i], res_a['y_loo'][i]], fmt_d)
+            else:
+                b_idx = i - len_a
+                ws2.write_row(row_idx, 0, [res_b['dopants'][b_idx], 'B', res_b['y_actual'].iloc[b_idx], res_b['y_loo'][b_idx]], fmt_d)
+            ws2.write_formula(row_idx, 4, f"=ABS(D{row_idx+1}-C{row_idx+1})", fmt_f)
+
+        # SHEET 3: Group A Residuals
+        ws3 = wb.add_worksheet('Panel 3 - Group A Residuals')
+        ws3.write_row(0, 0, ['Dopant Element', 'Fitted Values', 'Residuals'], fmt_h)
+        for i in range(len_a):
+            row_idx = i + 1
+            ws3.write_row(row_idx, 0, [res_a['dopants'][i], res_a['model'].fittedvalues.iloc[i], res_a['model'].resid.iloc[i]], fmt_d)
+
+        # SHEET 4: Group B Residuals
+        ws4 = wb.add_worksheet('Panel 4 - Group B Residuals')
+        ws4.write_row(0, 0, ['Dopant Element', 'Fitted Values', 'Residuals'], fmt_h)
+        for i in range(len(df_b)):
+            row_idx = i + 1
+            ws4.write_row(row_idx, 0, [res_b['dopants'][i], res_b['model'].fittedvalues.iloc[i], res_b['model'].resid.iloc[i]], fmt_d)
+
         wb.close()
         st.download_button(label="📥 Download Bilinear Model Report (Excel)", data=output_b.getvalue(), file_name="Bilinear_Model_Report.xlsx", mime="application/vnd.ms-excel")
 
@@ -185,7 +212,7 @@ with tab2:
     
     if file_c is not None:
         df_c = pd.read_csv(file_c)
-        gB = ['Cr', 'Mo', 'Mn', 'Tc', 'Fe', 'Ru', 'Os', 'Co', 'Rh', 'Ir', 'Ni', 'Pd', 'Pt']
+        gB = ['Cr', 'Mo', 'W', 'Mn', 'Tc', 'Re', 'Fe', 'Ru', 'Os', 'Co', 'Rh', 'Ir', 'Ni', 'Pd', 'Pt']
 
         df_g1 = df_c[df_c['Dopant'].isin(gB)].copy()
         df_g2 = df_c[~df_c['Dopant'].isin(gB)].copy()
@@ -292,7 +319,7 @@ with tab4:
             log_i0_theory = [norskov_eq12_and_14(x) for x in dG_range]
             ax_e.plot(dG_range, log_i0_theory, 'k--', lw=2.2, alpha=0.8, label='Theoretical Volcano (Eqs. 12 & 14)')
 
-            ax_e.scatter(df_e['DFT_E'], df_e['log_i0'], color='royalblue', edgecolors='black', s=90, zorder=5, label='Calculated Sites')
+            ax_e.scatter(df_e['DFT_E'], df_e['log_i0'], color='royalblue', edgecolors='black', zorder=5, label='Calculated Sites')
 
             for idx, row in df_e.iterrows():
                 ax_e.text(row['DFT_E'] + 0.02, row['log_i0'] + 0.02, str(row['Dopant']), fontsize=9)
