@@ -146,6 +146,15 @@ with tab1:
         ws_sum.write(0, 0, 'Statistical Parameters Summary', fmt_h)
         ws_sum.write_row(2, 0, ['Group', 'Term', 'Coefficient', 'P-Value', 'VIF'], fmt_h)
         
+        def write_summary_block(ws, start_row, g_name, r_obj):
+            ws.write(start_row, 0, g_name, fmt_d)
+            for idx, t in enumerate(['const', 'ed', 'Mag']):
+                r = start_row + idx
+                ws.write(r, 1, t, fmt_d)
+                ws.write(r, 2, r_obj['model'].params[t], fmt_d)
+                ws.write(r, 3, r_obj['model'].pvalues[t], fmt_d)
+                ws.write(r, 4, r_obj['vif'][idx] if t != 'const' else 'N/A', fmt_d)
+
         write_summary_block(ws_sum, 3, 'Group A', res_a)
         write_summary_block(ws_sum, 7, 'Group B', res_b)
 
@@ -261,12 +270,10 @@ with tab4:
     if file_e is not None:
         df_e = pd.read_csv(file_e)
         
-        # Verify columns exist
         if 'DFT_E' in df_e.columns and 'Dopant' in df_e.columns:
-            # Constants & Parameters
-            kB = 8.61733326e-5   # Boltzmann constant in eV/K
-            T = 298.15           # Temperature in K
-            k0 = 200.0           # Pre-exponential factor
+            kB = 8.61733326e-5   
+            T = 298.15           
+            k0 = 200.0           
             kBT = kB * T
             ln10 = np.log(10)
 
@@ -277,21 +284,16 @@ with tab4:
                     log_i0 -= (dG / (kBT * ln10))
                 return log_i0
 
-            # Compute log_i0 data column
             df_e['log_i0'] = df_e['DFT_E'].apply(norskov_eq12_and_14)
 
-            # Render Matplotlib Figure
             fig_e, ax_e = plt.subplots(figsize=(11, 7))
             
-            # Theoretical Curve
             dG_range = np.linspace(-1.2, 1.2, 500)
             log_i0_theory = [norskov_eq12_and_14(x) for x in dG_range]
             ax_e.plot(dG_range, log_i0_theory, 'k--', lw=2.2, alpha=0.8, label='Theoretical Volcano (Eqs. 12 & 14)')
 
-            # Scatter Points
             ax_e.scatter(df_e['DFT_E'], df_e['log_i0'], color='royalblue', edgecolors='black', s=90, zorder=5, label='Calculated Sites')
 
-            # Dopant Annotations
             for idx, row in df_e.iterrows():
                 ax_e.text(row['DFT_E'] + 0.02, row['log_i0'] + 0.02, str(row['Dopant']), fontsize=9)
 
@@ -305,7 +307,6 @@ with tab4:
             
             st.pyplot(fig_e)
 
-            # Generate Excel with Live Formulas
             output_e = io.BytesIO()
             writer_e = pd.ExcelWriter(output_e, engine='xlsxwriter')
             df_e.to_excel(writer_e, index=False, sheet_name='HER_Analysis')
@@ -313,7 +314,6 @@ with tab4:
             workbook_e = writer_e.book
             worksheet_e = writer_e.sheets['HER_Analysis']
 
-            # Helper configuration metadata cell mapping
             worksheet_e.write('Z1', 'kBT (eV)')
             worksheet_e.write('AA1', kBT)
             worksheet_e.write('Z2', 'k0 (const)')
